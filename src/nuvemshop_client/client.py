@@ -9,7 +9,9 @@ from .exception import (
 
 from .resources.products import Products
 from .resources.orders import Orders
-#from .resources.customers import Customers
+from .resources.customers import Customers
+from .resources.stores import Stores
+from .resources.abandoned_Checkouts import AbandonedCheckouts
 
 class NuvemshopClient:
     URL_BASE = "https://api.nuvemshop.com.br/2025-03/"
@@ -21,8 +23,9 @@ class NuvemshopClient:
         # Factory de recursos
         self.products = Products(self)
         self.orders = Orders(self)
-        #self.customers = Customers(self)
-
+        self.customers = Customers(self)
+        self.stores = Stores(self)
+        self.abandoned_checkouts = AbandonedCheckouts(self)
     def _get_headers(self, token=None):
         token = token or self.access_token
         return {
