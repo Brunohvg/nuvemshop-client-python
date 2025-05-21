@@ -1,12 +1,27 @@
+# src/nuvemshop_client/client.py
+
 import requests
-from .exception import NuvemshopClientError, NuvemshopClientAuthenticationError, NuvemshopClientNotFoundError
+from .exception import (
+    NuvemshopClientError,
+    NuvemshopClientAuthenticationError,
+    NuvemshopClientNotFoundError,
+)
+
+from .resources.products import Products
+from .resources.orders import Orders
+#from .resources.customers import Customers
 
 class NuvemshopClient:
-    URL_BASE = 'https://api.nuvemshop.com.br/2025-03/'
+    URL_BASE = "https://api.nuvemshop.com.br/2025-03/"
 
     def __init__(self, store_id, access_token):
         self.store_id = store_id
         self.access_token = access_token
+
+        # Factory de recursos
+        self.products = Products(self)
+        self.orders = Orders(self)
+        #self.customers = Customers(self)
 
     def _get_headers(self, token=None):
         token = token or self.access_token
@@ -17,13 +32,13 @@ class NuvemshopClient:
         }
 
     def _get_full_url(self, endpoint):
-        return f'{self.URL_BASE}stores/{self.store_id}/{endpoint}'
-    
+        return f"{self.URL_BASE}{self.store_id}/{endpoint}"
+
     def _handle_response(self, response):
         if response.status_code == 401:
-            raise NuvemshopClientAuthenticationError('Token de acesso inválido.')
+            raise NuvemshopClientAuthenticationError("Token de acesso inválido.")
         elif response.status_code == 404:
-            raise NuvemshopClientNotFoundError('Recurso não encontrado.')
+            raise NuvemshopClientNotFoundError("ESTOU AQUI NESSE ERRO Recurso não encontrado.")
         elif response.ok:
             try:
                 return response.json()
@@ -31,11 +46,11 @@ class NuvemshopClient:
                 return response.content
         else:
             try:
-                error_detail = f' - {response.json()}'
-            except:
-                error_detail = f' - {response.text}'
-            raise NuvemshopClientError(f'Erro na requisição: {response.status_code}{error_detail}')
-        
+                error_detail = f" - {response.json()}"
+            except ValueError:
+                error_detail = f" - {response.text}"
+            raise NuvemshopClientError(f"Erro na requisição: {response.status_code}{error_detail}")
+
     def get(self, endpoint, token=None, params=None):
         url = self._get_full_url(endpoint)
         response = requests.get(url, headers=self._get_headers(token), params=params)
@@ -55,5 +70,3 @@ class NuvemshopClient:
         url = self._get_full_url(endpoint)
         response = requests.delete(url, headers=self._get_headers(token))
         return self._handle_response(response)
-
-
