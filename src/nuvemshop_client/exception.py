@@ -8,4 +8,4 @@ class NuvemshopClientAuthenticationError(NuvemshopClientError):
 
 class NuvemshopClientNotFoundError(NuvemshopClientError):
     """Recurso não encontrado na API da Nuvemshop."""
-    pass
+    pass 

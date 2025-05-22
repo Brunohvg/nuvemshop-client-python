@@ -11,7 +11,7 @@ from .resources.products import Products
 from .resources.orders import Orders
 from .resources.customers import Customers
 from .resources.stores import Stores
-from .resources.abandoned_Checkouts import AbandonedCheckouts
+from .resources.abandoned_checkouts import AbandonedCheckouts
 
 class NuvemshopClient:
     URL_BASE = "https://api.nuvemshop.com.br/2025-03/"
@@ -26,6 +26,7 @@ class NuvemshopClient:
         self.customers = Customers(self)
         self.stores = Stores(self)
         self.abandoned_checkouts = AbandonedCheckouts(self)
+    
     def _get_headers(self, token=None):
         token = token or self.access_token
         return {
@@ -33,6 +34,7 @@ class NuvemshopClient:
             "User-Agent": "CloudStore (cloudstore@email.com)",
             "Content-Type": "application/json",
         }
+
 
     def _get_full_url(self, endpoint):
         return f"{self.URL_BASE}{self.store_id}/{endpoint}"
