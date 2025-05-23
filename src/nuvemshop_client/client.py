@@ -12,7 +12,7 @@ from .resources.orders import Orders
 from .resources.customers import Customers
 from .resources.stores import Stores
 from .resources.abandoned_checkouts import AbandonedCheckouts
-
+from .resources.webhooks import Webhooks
 class NuvemshopClient:
     URL_BASE = "https://api.nuvemshop.com.br/2025-03/"
 
@@ -26,6 +26,7 @@ class NuvemshopClient:
         self.customers = Customers(self)
         self.stores = Stores(self)
         self.abandoned_checkouts = AbandonedCheckouts(self)
+        self.webhooks = Webhooks(self)
     
     def _get_headers(self, token=None):
         token = token or self.access_token
