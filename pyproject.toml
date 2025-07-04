@@ -1,13 +1,19 @@
 [project]
 name = "nuvemshop-client-python"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.2.0" # Incremente a versão
+description = "Um cliente Python robusto e intuitivo para a API da Nuvemshop."
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [
+  { name="Bruno Vidal", email="brunovidal@lojabibelo.com.br" },
+]
+
+
 dependencies = [
     "decouple>=0.0.7",
     "flask>=3.1.1",
     "requests>=2.32.3",
+    "twine>=6.1.0",
 ]
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -15,5 +21,3 @@ package-dir = {"" = "src"}
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
-
-#uv pip install -e .

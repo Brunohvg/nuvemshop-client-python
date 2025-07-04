@@ -1,117 +1,155 @@
-🧰 nuvemshop-client-python
-Um cliente Python robusto e intuitivo para a API da Nuvemshop (Tiendanube).
+# 🧰 nuvemshop-client-python
 
-Desenvolvido para simplificar a criação de integrações, scripts e SDKs, com foco em organização, reuso e fácil manutenção.
+Um cliente Python robusto e intuitivo para a [API da Nuvemshop (Tiendanube)](https://developers.nuvemshop.com.br/).
 
-🚀 Funcionalidades
-✅ Cliente HTTP Resiliente: Gerencia requisições, autenticação e tratamento de erros de forma automática, com suporte a timeouts e retentativas configuráveis.
+Desenvolvido para simplificar a criação de integrações, automações e SDKs, com foco em **organização**, **reuso** e **manutenção fácil**.
 
-✅ Paginação Automática: Busque todos os recursos de um endpoint (ex: todos os produtos) com uma única chamada ao método .list_all().
+---
 
-✅ Fluxo de Autenticação OAuth 2.0: Módulo auxiliar para obter o access_token e store_id de novas lojas.
+## 🚀 Funcionalidades
 
-✅ Recursos Modulares: Operações da API organizadas por recursos (Products, Orders, Customers, etc.).
+* ✅ **Cliente HTTP Resiliente**
+  Requisições, autenticação e tratamento de erros automáticos, com suporte a timeouts e retentativas.
 
-✅ Interface Fluida: Interaja com a API de forma natural com a factory embutida (client.products.get()).
+* ✅ **Paginação Automática**
+  Busque todos os recursos com `.list_all()` sem precisar iterar páginas manualmente.
 
-✅ Estrutura Extensível: Uma classe ResourceCRUD genérica permite adicionar novos endpoints da API rapidamente.
+* ✅ **Fluxo de Autenticação OAuth 2.0**
+  Módulo auxiliar para obter `access_token` e `store_id` de novas lojas.
 
-✅ Projeto Instalável: Empacotado com pyproject.toml para ser facilmente instalado e distribuído.
+* ✅ **Recursos Modulares**
+  Operações da API organizadas por recursos: `Products`, `Orders`, `Customers`, etc.
 
-📦 Instalação e Configuração
-Clone o repositório:
+* ✅ **Interface Fluida**
+  Interaja naturalmente: `client.products.get()`, `client.orders.list()`, etc.
 
+* ✅ **Estrutura Extensível**
+  A classe `ResourceCRUD` permite criar novos recursos com 1 linha.
+
+* ✅ **Instalável com pip**
+  Empacotado com `pyproject.toml` para facilitar distribuição.
+
+---
+
+## 📦 Instalação
+
+```bash
 git clone https://github.com/Brunohvg/nuvemshop-client-python.git
 cd nuvemshop-client-python
+uv pip install -e .
+```
 
-Instale as dependências:
+> Usa `uv`? Perfeito, tudo funciona com ele. Também funciona com `pip` se preferir.
 
-pip install -e .
+---
 
-Configure suas credenciais:
-Para o fluxo de autenticação, crie um arquivo .env na raiz do projeto e adicione as credenciais da sua aplicação Nuvemshop. A biblioteca usa python-decouple para carregar essas variáveis.
+## ⚙️ Configuração
 
+Crie um `.env` com suas credenciais da aplicação Nuvemshop:
+
+```env
 CLIENT_ID="SEU_CLIENT_ID"
 CLIENT_SECRET="SEU_CLIENT_SECRET"
+```
 
-🔧 Como Usar
-O uso da biblioteca é dividido em dois passos principais: Autenticação e Comunicação com a API.
+A lib usa `python-decouple` para carregar isso automaticamente.
 
-Passo 1: Autenticação (Obtendo o Access Token)
-Use o módulo auth para trocar o code de autorização por um access_token e store_id.
+---
 
+## 🔐 Autenticação OAuth (passo 1)
+
+Troque o `code` recebido pela Nuvemshop por um token de acesso:
+
+```python
 from nuvemshop_client.auth import get_access_token
-# ...
+
 credentials = get_access_token("codigo_recebido_pela_nuvemshop")
 access_token = credentials.get("access_token")
 store_id = credentials.get("store_id")
+```
 
-Passo 2: Interagindo com a API
-Com as credenciais, instancie o NuvemshopClient.
+---
 
+## 🔗 Usando o cliente (passo 2)
+
+```python
 from nuvemshop_client import NuvemshopClient
 
 client = NuvemshopClient(
     store_id=store_id,
     access_token=access_token,
-    timeout=45,  # Opcional: tempo de espera por resposta
-    retries=5    # Opcional: número de retentativas em caso de erro
+    timeout=45,  # opcional
+    retries=5    # opcional
 )
 
-# Obter um produto específico
-produto = client.products.get(resource_id=12345)
+# Obter um produto
+produto = client.products.get(12345)
 
-# Obter TODOS os pedidos da loja, sem se preocupar com paginação
-todos_os_pedidos = client.orders.list_all()
+# Buscar TODOS os pedidos (automaticamente paginado)
+todos_pedidos = client.orders.list_all()
+```
 
-✨ Funcionalidades Avançadas
-Paginação Automática
-Para buscar todos os itens de um recurso sem precisar controlar as páginas manualmente, use o método .list_all().
+---
 
-# Em vez de fazer um loop em client.products.list(page=1), client.products.list(page=2)...
-# Faça apenas isso:
-todos_os_produtos = client.products.list_all(per_page=200) # per_page maior é mais eficiente
+## ✨ Funcionalidades Avançadas
 
-print(f"Total de produtos encontrados: {len(todos_os_produtos)}")
+### 🔄 Paginação automática
 
-Este método está disponível em todos os recursos que herdam de ResourceCRUD.
+```python
+produtos = client.products.list_all(per_page=200)
+print(f"Total de produtos: {len(produtos)}")
+```
 
-Resiliência (Timeouts e Retentativas)
-Ao inicializar o NuvemshopClient, você pode passar parâmetros para torná-lo mais robusto contra falhas de rede.
+---
 
-timeout: Tempo em segundos que o cliente esperará por uma resposta antes de desistir.
+### 🛡 Resiliência
 
-retries: Quantas vezes o cliente tentará novamente uma requisição que falhou por erros de servidor (como 500, 503) ou limite de requisições (429).
+Parâmetros extras ao instanciar o client:
 
-📚 Recursos Suportados
-A maioria dos recursos suporta os métodos list, list_all, get, create, update, e delete.
+* `timeout`: tempo máximo de espera por resposta (padrão: 30s)
+* `retries`: número de retentativas em caso de erro de rede, 429, 5xx (padrão: 3)
 
+---
+
+## 📚 Recursos Suportados
+
+Cada um possui `.list()`, `.get()`, `.create()`, `.update()`, `.delete()` e `.list_all()`:
+
+```python
 client.products
-
 client.orders
-
 client.customers
-
 client.abandoned_checkouts
-
 client.webhooks
-
 client.stores
+```
 
-❗ Tratamento de Erros
-A biblioteca lança exceções específicas para facilitar a captura de erros:
+---
 
-NuvemshopClientError: Erro genérico na comunicação com a API.
+## ⚠️ Tratamento de Erros
 
-NuvemshopClientAuthenticationError: Falha na autenticação.
+Use `try/except` com as exceções customizadas:
 
-NuvemshopClientNotFoundError: O recurso solicitado não foi encontrado (erro 404).
-
-Sempre envolva as chamadas da biblioteca em blocos try/except para tratar possíveis falhas.
+```python
+from nuvemshop_client.exception import (
+    NuvemshopClientError,
+    NuvemshopClientNotFoundError
+)
 
 try:
     produto = client.products.get(99999999)
-except NuvemshopClientNotFoundError as e:
-    print(f"Produto não encontrado: {e}")
+except NuvemshopClientNotFoundError:
+    print("Produto não encontrado.")
 except NuvemshopClientError as e:
-    print(f"Ocorreu um erro na API: {e}")
+    print(f"Erro ao acessar a API: {e}")
+```
+
+---
+
+## 📄 Licença
+
+MIT. Veja [LICENSE](./LICENSE) para mais detalhes.
+
+---
+
+Feito com 💚 por [Brunohvg](https://github.com/Brunohvg)
