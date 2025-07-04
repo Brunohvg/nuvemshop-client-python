@@ -1,6 +1,6 @@
 [project]
 name = "nuvemshop-client-python"
-version = "0.2.0" # Incremente a versão
+version = "0.2.1" # Incremente a versão
 description = "Um cliente Python robusto e intuitivo para a API da Nuvemshop."
 readme = "README.md"
 requires-python = ">=3.13"
