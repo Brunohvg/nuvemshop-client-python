@@ -1,22 +1,23 @@
 [project]
-name = "nuvemshop-client-python"
-version = "0.2.1" # Incremente a versão
-description = "Um cliente Python robusto e intuitivo para a API da Nuvemshop."
+name = "nuvemshop-sdk"
+version = "1.0.0"
+description = "SDK Python profissional para a API da Nuvemshop — rate-limit safe, variant-first, production-ready."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 authors = [
   { name="Bruno Vidal", email="brunovidal@lojabibelo.com.br" },
 ]
 
-
 dependencies = [
-    "decouple>=0.0.7",
-    "flask>=3.1.1",
-    "requests>=2.32.3",
-    "twine>=6.1.0",
+    "requests>=2.31.0",
+    "pydantic>=2.0.0",
 ]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -24,6 +25,8 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
-    "build>=1.2.2.post1",
-    "twine>=6.1.0",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "build>=1.2.0",
+    "twine>=6.0.0",
 ]
