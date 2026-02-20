@@ -69,7 +69,22 @@ class ForbiddenError(NuvemshopError):
 
 
 class ValidationError(NuvemshopError):
-    """422 — The request payload failed server-side validation."""
+    """422 — The request payload failed server-side validation.
+
+    Attributes:
+        errors: Optional dict mapping field names to validation messages.
+            Example: ``{"name": ["is required"], "price": ["must be positive"]}``
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        errors: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self.errors = errors or {}
+        super().__init__(message, **kwargs)
 
 
 class RateLimitError(NuvemshopError):
@@ -125,6 +140,7 @@ def raise_for_status(status_code: int, body: Any, headers: dict[str, str] | None
     """
     error_code: Optional[str] = None
     error_description: Optional[str] = None
+    field_errors: dict[str, Any] | None = None
     message_parts: list[str] = []
 
     # Try to extract structured error fields from JSON body
@@ -135,6 +151,8 @@ def raise_for_status(status_code: int, body: Any, headers: dict[str, str] | None
             or body.get("error_description")
             or body.get("message")
         )
+        # Capture field-level validation errors (422 responses)
+        field_errors = body.get("errors")
     elif isinstance(body, str):
         error_description = body
 
@@ -154,6 +172,10 @@ def raise_for_status(status_code: int, body: Any, headers: dict[str, str] | None
         error_description=error_description,
         response_body=body,
     )
+
+    # Special-case 422: attach field-level errors
+    if status_code == 422:
+        raise ValidationError(message, errors=field_errors, **kwargs)
 
     # Special-case 429: attach retry_after
     if status_code == 429:

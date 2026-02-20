@@ -1,17 +1,18 @@
-# src/tests/test_sdk.py
+# tests/test_sdk.py
 """
 Comprehensive test suite for the Nuvemshop SDK.
 
 Tests cover:
-  - Exceptions (402, 429, 422 etc.)
-  - Rate Limit Manager (preemptive/reactive, per-store, thread-safe)
+  - Exceptions (402, 429, 422 with field errors, etc.)
+  - Rate Limit Manager (per-store-id only, token rotation safe, thread-safe)
   - Retry Policy (filtered status codes, backoff)
   - Webhook HMAC validation (valid, invalid, expired)
   - Pydantic models (extra="allow")
   - Product model enforcement (root stock block, auto-variant)
   - Inventory resource (variant-level only)
-  - Idempotency (header presence)
-  - Pagination (lazy generator)
+  - Idempotency (single key across retries)
+  - Pagination (lazy generator, MAX_PER_PAGE clamp, safety limit)
+  - Timeout defaults
 """
 
 import hashlib
@@ -58,6 +59,25 @@ class TestExceptions:
             raise_for_status(422, {"error_code": "invalid_field", "error_description": "name is required"})
         assert exc_info.value.error_code == "invalid_field"
         assert exc_info.value.error_description == "name is required"
+
+    def test_422_captures_field_errors(self):
+        """Fix 4: ValidationError must capture the `errors` dict."""
+        field_errors = {"name": ["is required"], "price": ["must be positive"]}
+        with pytest.raises(ValidationError) as exc_info:
+            raise_for_status(422, {
+                "error_code": "validation_failed",
+                "error_description": "Invalid payload",
+                "errors": field_errors,
+            })
+        assert exc_info.value.errors == field_errors
+        assert exc_info.value.errors["name"] == ["is required"]
+        assert exc_info.value.errors["price"] == ["must be positive"]
+
+    def test_422_without_errors_field_has_empty_dict(self):
+        """When the API doesn't return `errors`, attribute should be empty dict."""
+        with pytest.raises(ValidationError) as exc_info:
+            raise_for_status(422, {"error_code": "oops"})
+        assert exc_info.value.errors == {}
 
     def test_429_raises_rate_limit_with_retry_after(self):
         with pytest.raises(RateLimitError) as exc_info:
@@ -134,6 +154,35 @@ class TestRateLimitManager:
         assert rl.get_status(1, "token_a").remaining == 3
         assert rl.get_status(2, "token_b").remaining == 10
 
+    def test_token_rotation_same_bucket(self):
+        """Fix 1: Rotating the token for the same store must NOT create
+        a new bucket — state should be shared."""
+        rl = RateLimitManager()
+        rl.update_from_headers(1, "old_token", {
+            "X-RateLimit-Remaining": "5",
+            "X-RateLimit-Reset": "0",
+        })
+        # Same store, different token → same bucket
+        status = rl.get_status(1, "new_token")
+        assert status.remaining == 5
+        assert status.total_requests == 1
+
+    def test_different_tokens_same_store_share_state(self):
+        """Fix 1: Two tokens for the same store_id use the same bucket."""
+        rl = RateLimitManager()
+        rl.update_from_headers(42, "token_v1", {
+            "X-RateLimit-Remaining": "10",
+            "X-RateLimit-Reset": "0",
+        })
+        rl.update_from_headers(42, "token_v2", {
+            "X-RateLimit-Remaining": "7",
+            "X-RateLimit-Reset": "0",
+        })
+        # Both calls went to the same bucket → 2 total requests
+        status = rl.get_status(42)
+        assert status.total_requests == 2
+        assert status.remaining == 7
+
     def test_thread_safety(self):
         """Run 10 concurrent updates — should not crash."""
         rl = RateLimitManager()
@@ -162,6 +211,17 @@ class TestRateLimitManager:
         status = rl.get_status(999, "x")
         assert status.remaining is None
         assert status.total_requests == 0
+
+    def test_get_status_without_token(self):
+        """Fix 1: get_status works without token (default empty string)."""
+        rl = RateLimitManager()
+        rl.update_from_headers(1, "some_token", {
+            "X-RateLimit-Remaining": "8",
+            "X-RateLimit-Reset": "0",
+        })
+        # Can query without token
+        status = rl.get_status(1)
+        assert status.remaining == 8
 
 
 # --- Retry Policy ---
@@ -387,9 +447,39 @@ class TestIdempotency:
         key = policy.generate_key(override="custom")
         assert key == "custom"
 
+    def test_key_stable_across_generate_calls(self):
+        """Fix 3: generate_key with an explicit override always returns
+        the same value — the retry loop in HttpClient calls
+        generate_key once, then passes the result to _build_headers."""
+        policy = IdempotencyPolicy(enabled=True)
+        key = policy.generate_key()  # generated once
+        # Simulating what the retry loop now does: pass the resolved key
+        assert policy.generate_key(override=key) == key
+
+
+# --- Timeout ---
+from nuvemshop_sdk.http_client import HttpClient
+
+
+class TestTimeoutDefaults:
+    """Fix 2: Timeout must default to 10 and never be None."""
+
+    def test_default_timeout_is_10(self):
+        client = HttpClient(store_id=1, access_token="t")
+        assert client.timeout == 10
+
+    def test_explicit_timeout_overrides(self):
+        client = HttpClient(store_id=1, access_token="t", timeout=20)
+        assert client.timeout == 20
+
+    def test_zero_timeout_fallback(self):
+        """timeout=0 should fallback to 10 to prevent hanging requests."""
+        client = HttpClient(store_id=1, access_token="t", timeout=0)
+        assert client.timeout == 10
+
 
 # --- Pagination ---
-from nuvemshop_sdk.utils.pagination import paginate, paginate_collect
+from nuvemshop_sdk.utils.pagination import paginate, paginate_collect, MAX_PER_PAGE, _MAX_PAGES
 
 
 class TestPagination:
@@ -445,6 +535,45 @@ class TestPagination:
         items = list(paginate(fetcher, per_page=5))
         assert len(items) == 3
         assert call_count["n"] == 1  # Should not fetch page 2
+
+    def test_per_page_clamped_to_max(self):
+        """Fix 5: per_page > MAX_PER_PAGE (200) must be clamped."""
+        received_per_page = {}
+
+        def fetcher(*, page, per_page, **kw):
+            received_per_page["val"] = per_page
+            return []  # empty → stop
+
+        list(paginate(fetcher, per_page=500))
+        assert received_per_page["val"] == MAX_PER_PAGE
+
+    def test_per_page_zero_clamped_to_1(self):
+        """Fix 5: per_page=0 must be clamped to 1."""
+        received_per_page = {}
+
+        def fetcher(*, page, per_page, **kw):
+            received_per_page["val"] = per_page
+            return []
+
+        list(paginate(fetcher, per_page=0))
+        assert received_per_page["val"] == 1
+
+    def test_max_pages_prevents_infinite_loop(self):
+        """Fix 5: Safety limit prevents infinite loops."""
+        call_count = {"n": 0}
+
+        def infinite_fetcher(*, page, per_page, **kw):
+            call_count["n"] += 1
+            # Always returns a full page — would loop forever without limit
+            return [{"id": i} for i in range(per_page)]
+
+        items = list(paginate(infinite_fetcher, per_page=2, max_pages=3))
+        assert call_count["n"] == 3
+        assert len(items) == 6  # 3 pages × 2 items
+
+    def test_max_per_page_constant(self):
+        """Fix 5: MAX_PER_PAGE is 200."""
+        assert MAX_PER_PAGE == 200
 
 
 # --- Auth ---

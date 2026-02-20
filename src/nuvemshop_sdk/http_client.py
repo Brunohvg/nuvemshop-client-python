@@ -129,7 +129,7 @@ class HttpClient:
         base_url: Optional[str] = None,
         environment: Environment = Environment.PRODUCTION,
         user_agent: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int = 10,
         rate_limit_manager: Optional[RateLimitManager] = None,
         retry_policy: Optional[RetryPolicy] = None,
         idempotency_policy: Optional[IdempotencyPolicy] = None,
@@ -140,7 +140,7 @@ class HttpClient:
         self.store_id = store_id
         self.access_token = access_token
         self.api_version = api_version
-        self.timeout = timeout
+        self.timeout = timeout or 10  # Never allow None/0
         self.user_agent = user_agent or DEFAULT_USER_AGENT
 
         # Resolve base URL
@@ -192,9 +192,8 @@ class HttpClient:
             access_token=self.access_token,
             user_agent=self.user_agent,
         )
-        key = self.idempotency.generate_key(idempotency_key)
-        if key:
-            headers["Idempotency-Key"] = key
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
         return headers
 
     # ------------------------------------------------------------------
@@ -214,7 +213,11 @@ class HttpClient:
 
         Returns the parsed JSON body (or ``{}`` for 204).
         """
-        headers = self._build_headers(idempotency_key=idempotency_key)
+        # Generate idempotency key ONCE for the entire request lifecycle.
+        # This key is reused across all retry attempts to guarantee
+        # that retries are idempotent (never generate a new UUID per retry).
+        resolved_key = self.idempotency.generate_key(idempotency_key)
+        headers = self._build_headers(idempotency_key=resolved_key)
         url = self._build_url(endpoint)
         attempt = 0
 

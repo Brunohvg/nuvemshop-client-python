@@ -78,7 +78,7 @@ class NuvemshopClient:
         base_url: Optional[str] = None,
         environment: str = "production",
         user_agent: Optional[str] = None,
-        timeout: int = 30,
+        timeout: int = 10,
         max_retries: int = 3,
         idempotency: bool = False,
         rate_limit_manager: Optional[RateLimitManager] = None,

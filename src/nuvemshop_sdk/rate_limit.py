@@ -14,10 +14,16 @@ simulate a local bucket.  Instead it:
 3. **Reactively blocks** when an unexpected HTTP 429 is received, parsing
    the headers and sleeping.
 
-Rate-limit state is indexed by ``(store_id, access_token)`` so that
-multiple stores sharing the same process never interfere with each other.
+Rate-limit state is indexed by ``store_id`` only, so that token rotation
+does not create orphaned buckets.  Multiple stores sharing the same process
+never interfere with each other.
 
 All public methods are thread-safe.
+
+Backward compatibility
+----------------------
+Public method signatures still accept a ``token`` parameter for backward
+compatibility, but the parameter is **ignored** for bucket lookup purposes.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ logger = logging.getLogger("nuvemshop_sdk.rate_limit")
 
 @dataclass
 class _BucketState:
-    """Internal mutable state for a single (store_id, token) pair."""
+    """Internal mutable state for a single store."""
 
     remaining: Optional[int] = None
     reset_timestamp: float = 0.0
@@ -65,7 +71,10 @@ class RateLimitStatus:
 # ---------------------------------------------------------------------------
 
 class RateLimitManager:
-    """Thread-safe rate-limit controller indexed by ``(store_id, token)``.
+    """Thread-safe rate-limit controller indexed by ``store_id``.
+
+    Token rotation is safe: swapping the access_token for a store
+    does NOT create a new bucket.
 
     Usage (inside ``HttpClient``)::
 
@@ -79,32 +88,35 @@ class RateLimitManager:
     """
 
     def __init__(self) -> None:
-        self._buckets: dict[tuple[int, str], _BucketState] = {}
+        self._buckets: dict[int, _BucketState] = {}
         self._global_lock = threading.Lock()
 
     # ------------------------------------------------------------------
-    # Bucket access
+    # Bucket access  (keyed by store_id only)
     # ------------------------------------------------------------------
 
-    def _get_bucket(self, store_id: int, token: str) -> _BucketState:
-        key = (store_id, token)
-        if key not in self._buckets:
+    def _get_bucket(self, store_id: int) -> _BucketState:
+        if store_id not in self._buckets:
             with self._global_lock:
                 # Double-checked locking
-                if key not in self._buckets:
-                    self._buckets[key] = _BucketState()
-        return self._buckets[key]
+                if store_id not in self._buckets:
+                    self._buckets[store_id] = _BucketState()
+        return self._buckets[store_id]
 
     # ------------------------------------------------------------------
     # Pre-request: preemptive wait
     # ------------------------------------------------------------------
 
-    def wait_if_needed(self, store_id: int, token: str) -> None:
+    def wait_if_needed(self, store_id: int, token: str = "") -> None:
         """Block the calling thread if the bucket for this store is empty.
 
         This is called **before** every HTTP request.
+
+        Args:
+            store_id: The Nuvemshop store ID.
+            token: Kept for backward compatibility; ignored for lookup.
         """
-        bucket = self._get_bucket(store_id, token)
+        bucket = self._get_bucket(store_id)
         with bucket.lock:
             if bucket.remaining is not None and bucket.remaining <= 0:
                 wait_seconds = max(0.0, bucket.reset_timestamp - time.time())
@@ -143,8 +155,13 @@ class RateLimitManager:
         Expected headers (case-insensitive lookup):
           - ``X-RateLimit-Remaining``
           - ``X-RateLimit-Reset``
+
+        Args:
+            store_id: The Nuvemshop store ID.
+            token: Kept for backward compatibility; ignored for lookup.
+            headers: Response headers dict.
         """
-        bucket = self._get_bucket(store_id, token)
+        bucket = self._get_bucket(store_id)
 
         # Case-insensitive header lookup
         lower_headers = {k.lower(): v for k, v in headers.items()}
@@ -190,9 +207,14 @@ class RateLimitManager:
 
         The caller (``HttpClient``) should sleep for the returned duration
         before retrying.
+
+        Args:
+            store_id: The Nuvemshop store ID.
+            token: Kept for backward compatibility; ignored for lookup.
+            headers: Response headers dict.
         """
         self.update_from_headers(store_id, token, headers)
-        bucket = self._get_bucket(store_id, token)
+        bucket = self._get_bucket(store_id)
 
         with bucket.lock:
             bucket.remaining = 0
@@ -215,9 +237,14 @@ class RateLimitManager:
     # Metrics
     # ------------------------------------------------------------------
 
-    def get_status(self, store_id: int, token: str) -> RateLimitStatus:
-        """Return a read-only snapshot of the rate-limit state."""
-        bucket = self._get_bucket(store_id, token)
+    def get_status(self, store_id: int, token: str = "") -> RateLimitStatus:
+        """Return a read-only snapshot of the rate-limit state.
+
+        Args:
+            store_id: The Nuvemshop store ID.
+            token: Kept for backward compatibility; ignored for lookup.
+        """
+        bucket = self._get_bucket(store_id)
         with bucket.lock:
             return RateLimitStatus(
                 remaining=bucket.remaining,
