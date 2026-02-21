@@ -120,7 +120,7 @@ class TestRateLimitManager:
         rl = RateLimitManager()
         rl.update_from_headers(1, "token", {
             "X-RateLimit-Remaining": "5",
-            "X-RateLimit-Reset": str(time.time() + 10),
+            "X-RateLimit-Reset": "10000",
         })
         status = rl.get_status(1, "token")
         assert status.remaining == 5
@@ -131,7 +131,7 @@ class TestRateLimitManager:
         # Set remaining = 0 with reset in 0.1 seconds
         rl.update_from_headers(1, "token", {
             "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": str(time.time() + 0.1),
+            "X-RateLimit-Reset": "100",
         })
         start = time.monotonic()
         rl.wait_if_needed(1, "token")
@@ -143,7 +143,7 @@ class TestRateLimitManager:
         rl = RateLimitManager()
         wait = rl.handle_429(1, "token", {
             "X-RateLimit-Remaining": "0",
-            "X-RateLimit-Reset": str(time.time() + 2.0),
+            "X-RateLimit-Reset": "2000",
         })
         assert wait > 0
 

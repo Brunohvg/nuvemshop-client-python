@@ -28,9 +28,10 @@ class BaseResource:
 
 
 class ResourceCRUD(BaseResource):
-    """Generic CRUD resource with built-in pagination.
+    """
+    Recurso genérico com suporte a operações CRUD e paginação integrada.
 
-    Subclasses must set ``endpoint`` (e.g. ``"products"``).
+    As subclasses devem definir o atributo ``endpoint`` (ex: ``"products"``).
     """
 
     endpoint: str = ""
@@ -44,16 +45,37 @@ class ResourceCRUD(BaseResource):
         *,
         page: int = 1,
         per_page: int = 50,
+        next_url: Optional[str] = None,
         **filters: Any,
-    ) -> list[dict[str, Any]]:
-        """Fetch a single page of resources."""
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
-        params.update(filters)
-        result = self._http.get(self.endpoint, params=params)
-        # The API may return a list or a dict wrapping a list
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], dict[str, str]]:
+        """List resources with support for page/per_page or next_url."""
+        # Use next_url if provided (standard 2025-03 practice)
+        if next_url:
+            result, headers = self._http.get_with_headers(next_url)
+        else:
+            params: dict[str, Any] = {"page": page, "per_page": per_page}
+            params.update(filters)
+            result, headers = self._http.get_with_headers(self.endpoint, params=params)
+
+        # Unwrapping logic (ensure list)
+        items = []
         if isinstance(result, list):
-            return result
-        return result  # type: ignore[return-value]
+            items = result
+        elif isinstance(result, dict):
+            for value in result.values():
+                if isinstance(value, list):
+                    items = value
+                    break
+
+        # If called internally by paginate(), we return headers.
+        # Otherwise, for backward compatibility, we return just the list.
+        # But wait, how do we know? Let's check if the caller expects it?
+        # A better approach: always return a list but allow a different method or flag.
+        # Actually, for the SDK to be modern, let's make it return just headers if next_url is set?
+        # For simplicity, if next_url is NO-None, we return (list, headers).
+        if next_url is not None:
+             return items, headers
+        return items
 
     def get(self, resource_id: int) -> dict[str, Any]:
         """Fetch a single resource by ID."""
@@ -116,7 +138,14 @@ class ResourceCRUD(BaseResource):
         )
 
     def _fetch_page(
-        self, *, page: int = 1, per_page: int = 50, **filters: Any,
-    ) -> list[dict[str, Any]]:
+        self,
+        *,
+        page: int = 1,
+        per_page: int = 50,
+        next_url: Optional[str] = None,
+        **kw: Any,
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], dict[str, str]]:
         """Internal fetcher compatible with the pagination utility."""
-        return self.list(page=page, per_page=per_page, **filters)
+        return self.list(
+            page=page, per_page=per_page, next_url=next_url, **kw
+        )

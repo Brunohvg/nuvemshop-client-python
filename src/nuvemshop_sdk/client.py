@@ -37,8 +37,13 @@ from typing import Optional
 from .auth import API_VERSION, Environment
 from .http_client import HttpClient, IdempotencyPolicy, StructuredJsonFormatter
 from .rate_limit import RateLimitManager, RateLimitStatus
+from .resources.base import BaseResource
+from .resources.categories import CategoriesResource
+from .resources.coupons import CouponsResource
 from .resources.customers import CustomersResource
+from .resources.discounts import DiscountsResource
 from .resources.inventory import InventoryResource
+from .resources.metafields import MetafieldsResource
 from .resources.orders import OrdersResource
 from .resources.products import ProductsResource
 from .resources.stores import StoresResource
@@ -50,23 +55,38 @@ logger = logging.getLogger("nuvemshop_sdk")
 
 
 class NuvemshopClient:
-    """Production-grade client for the Nuvemshop REST API.
+    """
+    Cliente profissional para a API REST da Nuvemshop.
 
-    One instance = one store.  Thread-safe for concurrent use.
+    Esta classe serve como o ponto de entrada principal para interagir com a API.
+    Cada instância é isolada e thread-safe, permitindo o uso simultâneo para
+    diferentes lojas.
+
+    Attributes:
+        products (ProductsResource): Operações de CRUD e modelos de produtos.
+        variants (VariantsResource): Gestão de variantes, preços e estoque.
+        categories (CategoriesResource): Gestão de categorias de produtos.
+        coupons (CouponsResource): Gestão de cupons de desconto.
+        discounts (DiscountsResource): Gestão de descontos da loja.
+        orders (OrdersResource): Consulta e gestão de pedidos.
+        customers (CustomersResource): Gestão de clientes da loja.
+        webhooks (WebhooksResource): Criação e listagem de notificações.
+        stores (StoresResource): Informações gerais da loja autenticada.
+        inventory (InventoryResource): Proxy especializado para controle de estoque.
+        metafields (MetafieldsResource): Gestão de metadados customizados.
 
     Args:
-        store_id: The Nuvemshop store (user) ID.
-        access_token: Permanent OAuth access token.
-        api_version: API version string (default ``"v1"``).
-        base_url: Override the API base URL (useful for tests).
-        environment: ``"production"`` or ``"sandbox"``.
-        user_agent: Custom User-Agent header.
-        timeout: HTTP request timeout in seconds.
-        max_retries: Maximum retry attempts for retryable errors.
-        idempotency: Enable auto-generated ``Idempotency-Key`` for POST.
-        rate_limit_manager: Share a :class:`RateLimitManager` across
-            multiple client instances (optional).
-        debug: Enable DEBUG-level structured JSON logging.
+        store_id (int): ID da loja Nuvemshop.
+        access_token (str): Token de acesso permanente (OAuth).
+        api_version (str): Versão da API (padrão "v1").
+        base_url (str, optional): URL base customizada para testes.
+        environment (str): "production" ou "sandbox".
+        user_agent (str, optional): User-Agent customizado.
+        timeout (int): Timeout da requisição em segundos (padrão 10).
+        max_retries (int): Número máximo de tentativas em caso de falha (padrão 3).
+        idempotency (bool): Se True, envia Idempotency-Key automaticamente em POSTs.
+        rate_limit_manager (RateLimitManager, optional): Gerenciador compartilhado de limites.
+        debug (bool): Se True, habilita logs JSON estruturados em nível DEBUG.
     """
 
     def __init__(
@@ -119,6 +139,9 @@ class NuvemshopClient:
         # Resource layer
         self.products = ProductsResource(self._http)
         self.variants = VariantsResource(self._http)
+        self.categories = CategoriesResource(self._http)
+        self.coupons = CouponsResource(self._http)
+        self.discounts = DiscountsResource(self._http)
         self.orders = OrdersResource(self._http)
         self.customers = CustomersResource(self._http)
         self.webhooks = WebhooksResource(self._http)
@@ -126,6 +149,7 @@ class NuvemshopClient:
 
         # Inventory is a safe proxy over variants
         self.inventory = InventoryResource(self.variants)
+        self.metafields = MetafieldsResource(self._http)
 
     # ------------------------------------------------------------------
     # Rate-limit metrics

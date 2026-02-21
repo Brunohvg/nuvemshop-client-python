@@ -180,7 +180,11 @@ class RateLimitManager:
 
             if raw_reset is not None:
                 try:
-                    bucket.reset_timestamp = float(raw_reset)
+                    # Nuvemshop API 2025-03: x-rate-limit-reset is in MILLISECONDS
+                    # representing when the bucket will be completely empty.
+                    # We convert it to an absolute timestamp for our internal logic.
+                    ms_to_reset = float(raw_reset)
+                    bucket.reset_timestamp = time.time() + (ms_to_reset / 1000.0)
                 except (ValueError, TypeError):
                     pass
 

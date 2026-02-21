@@ -30,7 +30,7 @@ from .exceptions import NuvemshopError, UnauthorizedError, NetworkError
 # ---------------------------------------------------------------------------
 
 SDK_VERSION = "1.0.0"
-API_VERSION = "v1"
+API_VERSION = "2025-03"
 DEFAULT_USER_AGENT = f"nuvemshop-sdk/{SDK_VERSION} (Python)"
 
 
@@ -42,11 +42,11 @@ class Environment(str, Enum):
 
 _ENV_URLS: dict[Environment, dict[str, str]] = {
     Environment.PRODUCTION: {
-        "api": "https://api.nuvemshop.com.br",
+        "api": "https://api.tiendanube.com",
         "auth": "https://www.tiendanube.com",
     },
     Environment.SANDBOX: {
-        "api": "https://api.nuvemshop.com.br",
+        "api": "https://api.tiendanube.com",
         "auth": "https://www.tiendanube.com",
     },
 }

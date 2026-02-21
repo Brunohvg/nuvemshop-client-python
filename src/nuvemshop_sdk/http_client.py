@@ -112,12 +112,25 @@ class IdempotencyPolicy:
 # ---------------------------------------------------------------------------
 
 class HttpClient:
-    """Low-level HTTP transport that integrates rate-limiting, retries,
-    idempotency, and structured logging.
+    """
+    Cliente HTTP de baixo nível que integra limites de taxa, retentativas,
+    idempotência e logging estruturado.
 
-    This class is **not** meant to be used directly by end-users.
-    The :class:`~nuvemshop_sdk.client.NuvemshopClient` aggregates it
-    together with the resource layer.
+    Esta classe não deve ser usada diretamente pelos usuários finais.
+    O :class:`~nuvemshop_sdk.client.NuvemshopClient` a utiliza internamente
+    em conjunto com a camada de recursos.
+
+    Args:
+        store_id (int): ID da loja Nuvemshop.
+        access_token (str): Token de acesso permanente.
+        api_version (str): Versão da API (padrão "v1").
+        base_url (str, optional): URL base para as requisições.
+        environment (Environment): Ambiente (Production/Sandbox).
+        user_agent (str, optional): Cabeçalho User-Agent.
+        timeout (int): Tempo limite das requisições.
+        rate_limit_manager (RateLimitManager, optional): Gerenciador de limites.
+        retry_policy (RetryPolicy, optional): Política de retentativas.
+        idempotency_policy (IdempotencyPolicy, optional): Política de idempotência.
     """
 
     def __init__(
@@ -209,16 +222,32 @@ class HttpClient:
         data: Optional[dict[str, Any]] = None,
         idempotency_key: Optional[str] = None,
     ) -> Any:
-        """Execute an HTTP request with rate-limiting, retry, and logging.
+        """Execute an HTTP request and return the parsed JSON body."""
+        body, _ = self._request_internal(
+            method,
+            endpoint,
+            params=params,
+            data=data,
+            idempotency_key=idempotency_key,
+        )
+        return body
 
-        Returns the parsed JSON body (or ``{}`` for 204).
-        """
-        # Generate idempotency key ONCE for the entire request lifecycle.
-        # This key is reused across all retry attempts to guarantee
-        # that retries are idempotent (never generate a new UUID per retry).
+    def _request_internal(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        params: Optional[dict[str, Any]] = None,
+        data: Optional[dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> tuple[Any, dict[str, str]]:
+        """Internal logic for request execution. Returns (body, headers)."""
         resolved_key = self.idempotency.generate_key(idempotency_key)
         headers = self._build_headers(idempotency_key=resolved_key)
-        url = self._build_url(endpoint)
+        
+        # If endpoint is a full URL (from Link header), use it directly.
+        url = endpoint if endpoint.startswith("http") else self._build_url(endpoint)
+        
         attempt = 0
 
         while True:
@@ -265,9 +294,8 @@ class HttpClient:
 
                 # 4. Success path
                 if response.ok:
-                    if response.status_code == 204:
-                        return {}
-                    return response.json()
+                    res_body = {} if response.status_code == 204 else response.json()
+                    return res_body, dict(response.headers)
 
                 # 5. Handle 429 reactively
                 if status_code == 429:
@@ -282,7 +310,6 @@ class HttpClient:
                         time.sleep(wait)
                         attempt += 1
                         continue
-                    # Max retries exhausted — raise
                     self._raise_from_response(response)
 
                 # 6. Retryable 5xx
@@ -293,7 +320,6 @@ class HttpClient:
                     attempt += 1
                     continue
 
-                # 7. Non-retryable error — raise immediately
                 self._raise_from_response(response)
 
             except requests.exceptions.RequestException as exc:
@@ -318,9 +344,6 @@ class HttpClient:
                 raise NetworkError(
                     f"Network error after {attempt + 1} attempt(s): {exc}",
                 ) from exc
-
-        # Unreachable, but keeps mypy happy
-        raise NuvemshopError("Unexpected exit from request loop")  # pragma: no cover
 
     # ------------------------------------------------------------------
     # Response → Exception
@@ -375,6 +398,12 @@ class HttpClient:
 
     def get(self, endpoint: str, params: Optional[dict[str, Any]] = None) -> Any:
         return self.request("GET", endpoint, params=params)
+
+    def get_with_headers(
+        self, endpoint: str, params: Optional[dict[str, Any]] = None
+    ) -> tuple[Any, dict[str, str]]:
+        """Execute a GET request and return both (body, headers)."""
+        return self._request_internal("GET", endpoint, params=params)
 
     def post(
         self,

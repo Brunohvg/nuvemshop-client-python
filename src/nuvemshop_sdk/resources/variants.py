@@ -57,15 +57,32 @@ class VariantsResource(BaseResource):
         *,
         page: int = 1,
         per_page: int = 50,
+        next_url: Optional[str] = None,
         **filters: Any,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], dict[str, str]]:
         """List variants for a product."""
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
-        params.update(filters)
-        result = self._http.get(self._endpoint(product_id), params=params)
+        if next_url:
+            result, headers = self._http.get_with_headers(next_url)
+        else:
+            params: dict[str, Any] = {"page": page, "per_page": per_page}
+            params.update(filters)
+            result, headers = self._http.get_with_headers(
+                self._endpoint(product_id), params=params
+            )
+
+        # Ensure we always return a list even if API wraps it in a dict
+        items = []
         if isinstance(result, list):
-            return result
-        return result  # type: ignore[return-value]
+            items = result
+        elif isinstance(result, dict):
+            for value in result.values():
+                if isinstance(value, list):
+                    items = value
+                    break
+
+        if next_url is not None:
+            return items, headers
+        return items
 
     def get(self, product_id: int, variant_id: int) -> dict[str, Any]:
         """Fetch a single variant."""

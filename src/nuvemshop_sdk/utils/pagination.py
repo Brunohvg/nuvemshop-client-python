@@ -55,9 +55,22 @@ def paginate(
 
     page = start_page
     pages_fetched = 0
+    next_url: Optional[str] = None
 
     while pages_fetched < limit:
-        items = fetcher(page=page, per_page=per_page, **filters)
+        # Fetch data. Fetcher can return a list OR a tuple (list, headers)
+        result = fetcher(page=page, per_page=per_page, next_url=next_url, **filters)
+        
+        if isinstance(result, tuple):
+            items, headers = result
+        else:
+            items, headers = result, {}
+
+        if not isinstance(items, list):
+            raise TypeError(
+                f"Pagination fetcher must return a list, got {type(items).__name__}. "
+                "Check if the resource is correctly unwrapping the API response."
+            )
 
         # Stop on empty response
         if not items:
@@ -66,12 +79,36 @@ def paginate(
         yield from items
         pages_fetched += 1
 
-        # If we received fewer items than requested → last page
-        if len(items) < per_page:
-            break
+        # Check for Link header (2025-03 standard)
+        next_url = _parse_next_link(headers.get("Link", ""))
+        
+        # If we have a next_url, we use it for the next iteration.
+        # Otherwise, we fallback to page increment.
+        if not next_url:
+            # If we received fewer items than requested → last page
+            if len(items) < per_page:
+                break
+            page += 1
+        else:
+            # We have a next_url, reset page increment logic for next fetcher call
+            page = -1 
 
-        # Explicit page increment
-        page += 1
+
+def _parse_next_link(link_header: str) -> Optional[str]:
+    """Parse the 'Link' header and return the URL for rel='next'."""
+    if not link_header:
+        return None
+    
+    # Format: <url>; rel="next", <url>; rel="last"
+    parts = link_header.split(",")
+    for part in parts:
+        if 'rel="next"' in part:
+            # Extract URL between < and >
+            start = part.find("<") + 1
+            end = part.find(">")
+            if start > 0 and end > start:
+                return part[start:end]
+    return None
 
 
 def paginate_collect(
